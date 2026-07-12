@@ -1,0 +1,24 @@
+{
+  "name": "transitops-person-d-backend",
+  "version": "1.0.0",
+  "description": "TransitOps — Person D module: Maintenance, Fuel & Expenses, Reports/Analytics, Export, License Alerts",
+  "main": "src/index.js",
+  "scripts": {
+    "dev": "node src/index.js",
+    "prisma:generate": "prisma generate",
+    "prisma:migrate": "prisma migrate dev --name init",
+    "seed": "node prisma/seed.js"
+  },
+  "prisma": {
+    "seed": "node prisma/seed.js"
+  },
+  "dependencies": {
+    "@prisma/client": "^5.18.0",
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.5",
+    "express": "^4.19.2"
+  },
+  "devDependencies": {
+    "prisma": "^5.18.0"
+  }
+}
