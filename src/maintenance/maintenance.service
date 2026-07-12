@@ -1,0 +1,144 @@
+const { PrismaClient } = require("@prisma/client");
+const prisma = new PrismaClient();
+
+// ── Create maintenance log ──────────────────────────────────────────
+// Business rules enforced:
+//   1. Vehicle must exist
+//   2. Vehicle must NOT already be IN_SHOP or ON_TRIP
+//   3. Vehicle must NOT be RETIRED
+//   4. Opening a log atomically sets vehicle.status = IN_SHOP
+const createMaintenance = async ({ vehicleId, type, description, cost, createdById }) => {
+  const vehicle = await prisma.vehicle.findUnique({ where: { id: vehicleId } });
+
+  if (!vehicle) {
+    throw new Error("Vehicle not found");
+  }
+
+  if (vehicle.status === "RETIRED") {
+    throw new Error("Retired vehicles cannot be sent to maintenance");
+  }
+
+  if (vehicle.status === "ON_TRIP") {
+    throw new Error("Vehicle is currently ON_TRIP and cannot be put in maintenance");
+  }
+
+  if (vehicle.status === "IN_SHOP") {
+    throw new Error("Vehicle is already IN_SHOP");
+  }
+
+  // Atomic: create log + flip vehicle status in one transaction
+  const [maintenanceLog] = await prisma.$transaction([
+    prisma.maintenanceLog.create({
+      data: {
+        vehicleId,
+        type,
+        description,
+        cost,
+        createdById,
+        status: "OPEN",
+        openedAt: new Date(),
+      },
+      include: {
+        vehicle: { select: { id: true, regNumber: true, nameModel: true, status: true } },
+        createdBy: { select: { id: true, name: true } },
+      },
+    }),
+    prisma.vehicle.update({
+      where: { id: vehicleId },
+      data: { status: "IN_SHOP" },
+    }),
+  ]);
+
+  return maintenanceLog;
+};
+
+// ── Close maintenance log ───────────────────────────────────────────
+// Business rules enforced:
+//   1. Log must exist and be OPEN
+//   2. Vehicle is restored to AVAILABLE — UNLESS it was RETIRED before
+//      (we check a snapshot: if vehicle is currently RETIRED, don't touch status)
+//   3. Sets closedAt timestamp
+const closeMaintenance = async (id) => {
+  const log = await prisma.maintenanceLog.findUnique({
+    where: { id },
+    include: { vehicle: true },
+  });
+
+  if (!log) {
+    throw new Error("Maintenance log not found");
+  }
+
+  if (log.status === "CLOSED") {
+    throw new Error("Maintenance log is already closed");
+  }
+
+  // Only restore to AVAILABLE if vehicle is not RETIRED
+  const restoreStatus = log.vehicle.status === "RETIRED" ? "RETIRED" : "AVAILABLE";
+
+  const [updatedLog] = await prisma.$transaction([
+    prisma.maintenanceLog.update({
+      where: { id },
+      data: {
+        status: "CLOSED",
+        closedAt: new Date(),
+      },
+      include: {
+        vehicle: { select: { id: true, regNumber: true, nameModel: true, status: true } },
+        createdBy: { select: { id: true, name: true } },
+      },
+    }),
+    prisma.vehicle.update({
+      where: { id: log.vehicleId },
+      data: { status: restoreStatus },
+    }),
+  ]);
+
+  return updatedLog;
+};
+
+// ── Get maintenance logs ────────────────────────────────────────────
+const getMaintenanceLogs = async ({ vehicleId, status, page, limit }) => {
+  const where = {};
+
+  if (vehicleId) where.vehicleId = vehicleId;
+  if (status)    where.status = status;       // "OPEN" | "CLOSED"
+
+  const skip = (page - 1) * limit;
+
+  const [logs, total] = await prisma.$transaction([
+    prisma.maintenanceLog.findMany({
+      where,
+      skip,
+      take: limit,
+      orderBy: { openedAt: "desc" },
+      include: {
+        vehicle: { select: { id: true, regNumber: true, nameModel: true, type: true } },
+        createdBy: { select: { id: true, name: true } },
+      },
+    }),
+    prisma.maintenanceLog.count({ where }),
+  ]);
+
+  return {
+    logs,
+    pagination: { total, page, limit, pages: Math.ceil(total / limit) },
+  };
+};
+
+// ── Get single log ──────────────────────────────────────────────────
+const getMaintenanceById = async (id) => {
+  return prisma.maintenanceLog.findUnique({
+    where: { id },
+    include: {
+      vehicle: true,
+      createdBy: { select: { id: true, name: true, role: true } },
+    },
+  });
+};
+
+module.exports = {
+  createMaintenance,
+  closeMaintenance,
+  getMaintenanceLogs,
+  getMaintenanceById,
+};

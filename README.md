@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 # TransitOps — Person D module
 
 Maintenance · Fuel & Expenses · Cost Aggregation · Reports/Analytics · CSV/PDF Export · License Expiry Alerts
@@ -114,3 +115,7 @@ GET   /alerts/license-expiry?days=30
   Vehicle/Driver/Trip models in favor of the shared ones once you merge —
   keep the enums (`VehicleStatus`, `DriverStatus`, etc.) consistent across
   everyone's schema files.
+=======
+# Odoo_Hackathon_2026
+Odoo Hackathon 2026 - Team of 4 Coders 
+>>>>>>> 88d74b0781ea4e1944c51877ebf8391bd5353ea8
